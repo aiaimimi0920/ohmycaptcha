@@ -1,0 +1,23 @@
+{
+  "skill_name": "ohmycaptcha-image",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "Create a README hero image concept for OhMyCaptcha that feels polished, technical, and open-source friendly.",
+      "expected_output": "A public-safe hero image prompt or image-generation workflow that emphasizes API flows, browser automation, and multimodal vision without exposing secrets.",
+      "files": []
+    },
+    {
+      "id": 2,
+      "prompt": "Generate a documentation illustration idea for Render and Hugging Face deployment guidance in the OhMyCaptcha docs.",
+      "expected_output": "A clear, reusable visual concept for deployment docs, keeping the image neutral, technical, and safe for a public repository.",
+      "files": []
+    },
+    {
+      "id": 3,
+      "prompt": "I need a banner image for a Claude Code / OpenCode compatible skill that helps people operate OhMyCaptcha locally.",
+      "expected_output": "A concise, safe prompt suitable for generating a banner that highlights local tooling, agent workflows, and repository branding.",
+      "files": []
+    }
+  ]
+}

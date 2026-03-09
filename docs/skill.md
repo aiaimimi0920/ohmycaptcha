@@ -1,35 +1,58 @@
 # Agent Skill
 
-OhMyCaptcha ships with a reusable skill under `skills/ohmycaptcha/`.
+OhMyCaptcha ships with reusable skills under `skills/`.
 
-## Purpose
+## Available skills
 
-The skill helps agent environments answer OhMyCaptcha-specific questions consistently, including:
+- `skills/ohmycaptcha/` — operate, deploy, validate, and integrate the service
+- `skills/ohmycaptcha-image/` — create public-safe visuals for README, docs, and launch assets
 
-- deployment
+## For humans
+
+If your tool can read a local skill folder directly, copy one or both of these directories into your local skills directory:
+
+```text
+skills/ohmycaptcha/
+skills/ohmycaptcha-image/
+```
+
+Then restart your tool if it caches skill metadata.
+
+## Let an LLM do it
+
+Paste this into any capable agent environment:
+
+```text
+Install the OhMyCaptcha skills from this repository and make them available in my local skills directory. Then show me how to use the operational skill for deployment and the image skill for generating README or docs visuals.
+```
+
+## What the operational skill does
+
+The `ohmycaptcha` skill helps with:
+
+- local startup
 - environment setup
 - YesCaptcha-style API usage
 - flow2api integration
 - Render deployment
 - Hugging Face Spaces deployment
+- task validation and troubleshooting
 
-## Skill location
+## What the image skill does
 
-```text
-skills/ohmycaptcha/SKILL.md
-```
+The `ohmycaptcha-image` skill helps with:
 
-## Example install prompt
+- README hero image prompts
+- docs illustrations
+- public-safe technical visuals
+- architecture-themed artwork
+- reusable image-generation prompts for agent workflows
 
-You can ask an LLM agent to install or copy the skill for you.
+## Design guarantees
 
-```text
-Install the OhMyCaptcha skill from this repository and make it available in my local skills directory. Then show me how to use it for deploying or integrating the service.
-```
+These skills are designed to:
 
-## Design principles
-
-- uses placeholder credentials only
-- stays aligned with the actual implemented task types
-- keeps limitations explicit
-- points users back to repository docs when needed
+- use placeholder credentials only
+- stay aligned with the implemented task types
+- keep current limitations explicit
+- avoid embedding secrets, private endpoints, or customer data

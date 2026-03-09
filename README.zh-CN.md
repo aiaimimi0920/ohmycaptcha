@@ -15,6 +15,10 @@
   <img alt="Docs" src="https://img.shields.io/badge/docs-MkDocs%20Material-526CFE.svg">
 </p>
 
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="OhMyCaptcha Hero 图" width="100%">
+</p>
+
 OhMyCaptcha 是一个可自托管的验证码解决服务，为本仓库已经实现的任务类型提供 **YesCaptcha 风格异步 API**。它面向 **flow2api**、内部路由层以及其他依赖 `createTask` / `getTaskResult` 语义的系统。
 
 它主要由以下部分组成：
@@ -253,11 +257,12 @@ curl -X POST http://localhost:8000/createTask \
 - 中文文档：`docs/zh/`
 - 在线文档：`https://shenhao-stu.github.io/ohmycaptcha/`
 
-## Agent Skill
+## Agent Skills
 
-仓库还包含一个可安装的 agent skill：
+仓库还包含可安装的 agent skills：
 
-- `skills/ohmycaptcha/`
+- `skills/ohmycaptcha/` — 用于部署、验证、集成和运维 OhMyCaptcha
+- `skills/ohmycaptcha-image/` — 用于生成 README 与文档所需的公开安全图片
 
 适用于 Claude Code、OpenCode 以及类似可以复用仓库内 skill 的 agent 环境。
 
@@ -281,4 +286,4 @@ npx pyright
 
 ## License
 
-如果目标仓库尚未声明许可证，请在公开发布前补充 License。
+本仓库采用 [MIT License](LICENSE)。

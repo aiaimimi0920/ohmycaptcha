@@ -15,6 +15,10 @@
   <img alt="Docs" src="https://img.shields.io/badge/docs-MkDocs%20Material-526CFE.svg">
 </p>
 
+<p align="center">
+  <img src="docs/assets/hero.svg" alt="OhMyCaptcha hero illustration" width="100%">
+</p>
+
 OhMyCaptcha is a self-hostable captcha solving service that exposes a **YesCaptcha-style async API** for the task types implemented in this repository. It is designed for **flow2api**, internal routing layers, and other systems that expect `createTask` / `getTaskResult` semantics.
 
 It combines:
@@ -253,13 +257,14 @@ This keeps the public README visually strong without embedding private runtime d
 - Chinese docs: `docs/zh/`
 - Published site: `https://shenhao-stu.github.io/ohmycaptcha/`
 
-## Agent skill
+## Agent skills
 
-This repository also includes an installable agent skill under:
+This repository also includes installable agent skills under:
 
-- `skills/ohmycaptcha/`
+- `skills/ohmycaptcha/` — operate, deploy, validate, and integrate OhMyCaptcha
+- `skills/ohmycaptcha-image/` — generate public-safe README and docs visuals
 
-It is intended for Claude Code, OpenCode, and similar agent environments that can reuse repository-local skills.
+They are intended for Claude Code, OpenCode, and similar agent environments that can reuse repository-local skills.
 
 ## Development
 
@@ -281,4 +286,4 @@ npx pyright
 
 ## License
 
-Add a license before public distribution if the destination repository does not already define one.
+This repository is released under the [MIT License](LICENSE).

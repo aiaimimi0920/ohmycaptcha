@@ -1,0 +1,30 @@
+<svg width="1600" height="900" viewBox="0 0 1600 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+<rect width="1600" height="900" fill="#0B1020"/>
+<circle cx="1320" cy="140" r="220" fill="#2D4BFF" fill-opacity="0.18"/>
+<circle cx="210" cy="760" r="260" fill="#00C2FF" fill-opacity="0.12"/>
+<rect x="130" y="140" width="520" height="620" rx="28" fill="#11182E" stroke="#24314F"/>
+<rect x="190" y="230" width="400" height="62" rx="16" fill="#18233F"/>
+<rect x="190" y="330" width="400" height="18" rx="9" fill="#2B395C"/>
+<rect x="190" y="370" width="290" height="18" rx="9" fill="#2B395C"/>
+<rect x="190" y="460" width="160" height="160" rx="22" fill="#132443" stroke="#2D4BFF"/>
+<rect x="390" y="460" width="160" height="160" rx="22" fill="#132443" stroke="#00C2FF"/>
+<path d="M260 545C280 505 320 505 340 545" stroke="#7AA2FF" stroke-width="12" stroke-linecap="round"/>
+<circle cx="470" cy="540" r="38" stroke="#63E0FF" stroke-width="12"/>
+<rect x="760" y="170" width="700" height="170" rx="28" fill="#11182E" stroke="#24314F"/>
+<rect x="810" y="225" width="230" height="34" rx="12" fill="#E6EEFF" fill-opacity="0.95"/>
+<rect x="1070" y="225" width="150" height="34" rx="12" fill="#2D4BFF"/>
+<rect x="1245" y="225" width="150" height="34" rx="12" fill="#00C2FF"/>
+<rect x="760" y="390" width="330" height="290" rx="28" fill="#11182E" stroke="#24314F"/>
+<rect x="1130" y="390" width="330" height="290" rx="28" fill="#11182E" stroke="#24314F"/>
+<path d="M845 490H1005" stroke="#7AA2FF" stroke-width="14" stroke-linecap="round"/>
+<path d="M845 550H965" stroke="#4C5F8E" stroke-width="14" stroke-linecap="round"/>
+<path d="M1195 520C1235 470 1315 470 1355 520" stroke="#63E0FF" stroke-width="14" stroke-linecap="round"/>
+<circle cx="1220" cy="610" r="20" fill="#2D4BFF"/>
+<circle cx="1285" cy="610" r="20" fill="#4C7DFF"/>
+<circle cx="1350" cy="610" r="20" fill="#63E0FF"/>
+<path d="M650 250H760" stroke="#2D4BFF" stroke-width="8" stroke-linecap="round"/>
+<path d="M650 550H760" stroke="#00C2FF" stroke-width="8" stroke-linecap="round"/>
+<text x="810" y="520" fill="#EAF0FF" font-size="42" font-family="Arial, sans-serif" font-weight="700">OhMyCaptcha</text>
+<text x="810" y="575" fill="#95A7D6" font-size="26" font-family="Arial, sans-serif">Self-hostable captcha solver</text>
+<text x="810" y="615" fill="#95A7D6" font-size="26" font-family="Arial, sans-serif">Browser automation · YesCaptcha-style API · Multimodal vision</text>
+</svg>

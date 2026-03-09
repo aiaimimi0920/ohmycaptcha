@@ -1,24 +1,33 @@
 # OhMyCaptcha Skills
 
-This repository includes a reusable skill for agent-driven environments such as Claude Code and similar tool-using assistants.
+This repository includes reusable skills for Claude Code, OpenCode, OpenClaw-style workflows, and similar agent environments.
 
-## Included skill
+## Included skills
 
-- `skills/ohmycaptcha/` — operational guidance for deploying, configuring, validating, and integrating OhMyCaptcha
+- `skills/ohmycaptcha/` — deploy, validate, and integrate OhMyCaptcha
+- `skills/ohmycaptcha-image/` — generate public-safe visuals for README and docs
 
-## Installation idea
+## For humans
 
-For human users or agent-driven setup flows, point the assistant at this repository and ask it to install or copy the skill from:
-
-- `skills/ohmycaptcha/`
-
-Example prompt for an LLM agent:
+Copy one or both of these folders into your local skills directory:
 
 ```text
-Install the OhMyCaptcha skill from this repository and make it available in my local skills directory. Then show me how to use it for deploying or integrating the service.
+skills/ohmycaptcha/
+skills/ohmycaptcha-image/
+```
+
+Then restart your tool if it caches skills.
+
+## Let an LLM do it
+
+Paste this into any capable LLM agent:
+
+```text
+Install the OhMyCaptcha skills from this repository and make them available in my local skills directory. Then show me how to use the operational skill for deployment and the image skill for generating README or docs visuals.
 ```
 
 ## Notes
 
-- The skill is documentation-backed and uses only placeholder credentials.
-- It is intended to make OhMyCaptcha easier to operate from agent environments.
+- Both skills are documentation-backed.
+- Both skills use placeholder credentials only.
+- The image skill is designed for repository-safe artwork and prompt generation.
