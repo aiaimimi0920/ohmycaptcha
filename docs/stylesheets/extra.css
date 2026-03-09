@@ -35,3 +35,12 @@
   color: var(--md-default-fg-color--light);
   font-size: 0.8rem;
 }
+
+.md-header__option {
+  order: 20;
+}
+
+.md-header__option:last-of-type {
+  order: 99;
+  margin-inline-start: auto;
+}

@@ -6,13 +6,6 @@ repo_name: shenhao-stu/ohmycaptcha
 edit_uri: edit/main/docs/
 
 extra:
-  alternate:
-    - name: English
-      link: /
-      lang: en
-    - name: 简体中文
-      link: /zh/
-      lang: zh
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/shenhao-stu/ohmycaptcha
@@ -41,7 +34,6 @@ theme:
         icon: material/weather-sunny
         name: Switch to light mode
   features:
-    - navigation.instant
     - navigation.sections
     - navigation.expand
     - navigation.top
@@ -53,9 +45,49 @@ theme:
 
 plugins:
   - search
-  - redirects:
-      redirect_maps:
-        zh/index.md: index.md
+  - i18n:
+      docs_structure: folder
+      fallback_to_default: true
+      reconfigure_material: true
+      reconfigure_search: true
+      languages:
+        - locale: en
+          name: English
+          default: true
+          build: true
+          nav_translations:
+            Home: Home
+            Getting Started: Getting Started
+            API Reference: API Reference
+            Usage: Usage
+            reCAPTCHA v3: reCAPTCHA v3
+            Image CAPTCHA: Image CAPTCHA
+            Positioning: Positioning
+            Deployment: Deployment
+            Render: Render
+            Hugging Face Spaces: Hugging Face Spaces
+            Agent Skill: Agent Skill
+            Acceptance: Acceptance
+            FAQ: FAQ
+        - locale: zh
+          name: 简体中文
+          build: true
+          site_name: OhMyCaptcha
+          nav_translations:
+            Home: 首页
+            Getting Started: 快速开始
+            API Reference: API 参考
+            Usage: 使用指南
+            reCAPTCHA v3: reCAPTCHA v3
+            Image CAPTCHA: 图片验证码
+            Positioning: 项目定位
+            Deployment: 部署
+            Render: Render
+            Hugging Face Spaces: Hugging Face Spaces
+            Agent Skill: Agent Skill
+            Acceptance: 验收
+            FAQ: 常见问题
+  - redirects
 
 markdown_extensions:
   - admonition
@@ -85,17 +117,3 @@ nav:
   - Agent Skill: skill.md
   - Acceptance: acceptance.md
   - FAQ: faq.md
-  - 中文文档:
-      - 首页: zh/index.md
-      - 快速开始: zh/getting-started.md
-      - API 参考: zh/api-reference.md
-      - 使用指南:
-          - reCAPTCHA v3: zh/usage/recaptcha-v3.md
-          - 图片验证码: zh/usage/image-captcha.md
-      - 项目定位: zh/positioning.md
-      - 部署:
-          - Render: zh/deployment/render.md
-          - Hugging Face Spaces: zh/deployment/huggingface.md
-      - Agent Skill: zh/skill.md
-      - 验收: zh/acceptance.md
-      - 常见问题: zh/faq.md
