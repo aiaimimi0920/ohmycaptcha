@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import traceback
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
@@ -10,13 +11,7 @@ from fastapi import FastAPI
 
 from .api.routes import router
 from .core.config import config
-from .services.classification import ClassificationSolver
-from .services.hcaptcha import HCaptchaSolver
-from .services.recognition import CaptchaRecognizer
-from .services.recaptcha_v2 import RecaptchaV2Solver
-from .services.recaptcha_v3 import RecaptchaV3Solver
 from .services.task_manager import task_manager
-from .services.turnstile import TurnstileSolver
 
 logging.basicConfig(
     level=logging.INFO,
@@ -64,47 +59,70 @@ _IMAGE_TEXT_TYPES = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-    # ── startup ──
-    v3_solver = RecaptchaV3Solver(config)
-    await v3_solver.start()
-    for task_type in _RECAPTCHA_V3_TYPES:
-        task_manager.register_solver(task_type, v3_solver)
-    log.info("Registered reCAPTCHA v3 solver for types: %s", _RECAPTCHA_V3_TYPES)
+    v3_solver = None
+    v2_solver = None
+    hcaptcha_solver = None
+    turnstile_solver = None
 
-    v2_solver = RecaptchaV2Solver(config)
-    await v2_solver.start()
-    for task_type in _RECAPTCHA_V2_TYPES:
-        task_manager.register_solver(task_type, v2_solver)
-    log.info("Registered reCAPTCHA v2 solver for types: %s", _RECAPTCHA_V2_TYPES)
+    try:
+        from .services.classification import ClassificationSolver
+        from .services.hcaptcha import HCaptchaSolver
+        from .services.recognition import CaptchaRecognizer
+        from .services.recaptcha_v2 import RecaptchaV2Solver
+        from .services.recaptcha_v3 import RecaptchaV3Solver
+        from .services.turnstile import TurnstileSolver
 
-    hcaptcha_solver = HCaptchaSolver(config)
-    await hcaptcha_solver.start()
-    for task_type in _HCAPTCHA_TYPES:
-        task_manager.register_solver(task_type, hcaptcha_solver)
-    log.info("Registered hCaptcha solver for types: %s", _HCAPTCHA_TYPES)
+        # ── startup ──
+        v3_solver = RecaptchaV3Solver(config)
+        await v3_solver.start()
+        for task_type in _RECAPTCHA_V3_TYPES:
+            task_manager.register_solver(task_type, v3_solver)
+        log.info("Registered reCAPTCHA v3 solver for types: %s", _RECAPTCHA_V3_TYPES)
 
-    turnstile_solver = TurnstileSolver(config)
-    await turnstile_solver.start()
-    for task_type in _TURNSTILE_TYPES:
-        task_manager.register_solver(task_type, turnstile_solver)
-    log.info("Registered Turnstile solver for types: %s", _TURNSTILE_TYPES)
+        v2_solver = RecaptchaV2Solver(config)
+        await v2_solver.start()
+        for task_type in _RECAPTCHA_V2_TYPES:
+            task_manager.register_solver(task_type, v2_solver)
+        log.info("Registered reCAPTCHA v2 solver for types: %s", _RECAPTCHA_V2_TYPES)
 
-    recognizer = CaptchaRecognizer(config)
-    for task_type in _IMAGE_TEXT_TYPES:
-        task_manager.register_solver(task_type, recognizer)
-    log.info("Registered image captcha recognizer for types: %s", _IMAGE_TEXT_TYPES)
+        hcaptcha_solver = HCaptchaSolver(config)
+        await hcaptcha_solver.start()
+        for task_type in _HCAPTCHA_TYPES:
+            task_manager.register_solver(task_type, hcaptcha_solver)
+        log.info("Registered hCaptcha solver for types: %s", _HCAPTCHA_TYPES)
 
-    classifier = ClassificationSolver(config)
-    for task_type in _CLASSIFICATION_TYPES:
-        task_manager.register_solver(task_type, classifier)
-    log.info("Registered classification solver for types: %s", _CLASSIFICATION_TYPES)
+        turnstile_solver = TurnstileSolver(config)
+        await turnstile_solver.start()
+        for task_type in _TURNSTILE_TYPES:
+            task_manager.register_solver(task_type, turnstile_solver)
+        log.info("Registered Turnstile solver for types: %s", _TURNSTILE_TYPES)
 
-    yield
-    # ── shutdown ──
-    await v3_solver.stop()
-    await v2_solver.stop()
-    await hcaptcha_solver.stop()
-    await turnstile_solver.stop()
+        recognizer = CaptchaRecognizer(config)
+        for task_type in _IMAGE_TEXT_TYPES:
+            task_manager.register_solver(task_type, recognizer)
+        log.info("Registered image captcha recognizer for types: %s", _IMAGE_TEXT_TYPES)
+
+        classifier = ClassificationSolver(config)
+        for task_type in _CLASSIFICATION_TYPES:
+            task_manager.register_solver(task_type, classifier)
+        log.info("Registered classification solver for types: %s", _CLASSIFICATION_TYPES)
+
+        yield
+    except Exception:
+        traceback_text = traceback.format_exc()
+        log.error("Application startup failed:\n%s", traceback_text)
+        print(traceback_text, flush=True)
+        raise
+    finally:
+        # ── shutdown ──
+        if v3_solver is not None:
+            await v3_solver.stop()
+        if v2_solver is not None:
+            await v2_solver.stop()
+        if hcaptcha_solver is not None:
+            await hcaptcha_solver.stop()
+        if turnstile_solver is not None:
+            await turnstile_solver.stop()
 
 
 app = FastAPI(

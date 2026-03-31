@@ -77,19 +77,7 @@ class RecaptchaV2Solver:
         if self._browser_service.enabled:
             log.info("RecaptchaV2Solver using BrowserService backend")
             return
-        if self._browser is not None:
-            return
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=self._config.browser_headless,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ],
-        )
-        log.info("RecaptchaV2Solver browser started")
+        log.info("RecaptchaV2Solver defers local browser startup until first solve")
 
     async def stop(self) -> None:
         if self._browser_service.enabled:
@@ -109,6 +97,7 @@ class RecaptchaV2Solver:
                 raise RuntimeError(f"BrowserService returned invalid reCAPTCHA v2 result: {result}")
             return result
 
+        await self._ensure_browser()
         website_url = params["websiteURL"]
         website_key = params["websiteKey"]
         is_invisible = params.get("isInvisible", False)
@@ -257,6 +246,21 @@ class RecaptchaV2Solver:
         await asyncio.sleep(2)
 
         return await page.evaluate(_EXTRACT_TOKEN_JS)
+
+    async def _ensure_browser(self) -> None:
+        if self._browser is not None:
+            return
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(
+            headless=self._config.browser_headless,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        )
+        log.info("RecaptchaV2Solver browser started lazily")
 
     async def _transcribe_audio(self, audio_bytes: bytes) -> str | None:
         """Send audio bytes to the OpenAI-compatible audio transcription endpoint."""

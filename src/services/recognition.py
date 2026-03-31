@@ -88,6 +88,13 @@ Rules:
 """
 
 USER_PROMPT = "Identify the CAPTCHA type and return the annotation JSON."
+OCR_SYSTEM_PROMPT = """\
+You are an OCR assistant for CAPTCHA text extraction.
+Read the characters in the image exactly as shown.
+Return ONLY the captcha text itself, with no markdown, no JSON, no explanation.
+If the captcha contains spaces between characters, remove the spaces unless they are visually meaningful.
+"""
+OCR_USER_PROMPT = "Read the captcha text exactly and return only the text."
 
 # Standard size for consistent coordinate space (matching Argus)
 TARGET_WIDTH = 1440
@@ -108,7 +115,7 @@ class CaptchaRecognizer:
             self._cloud_endpoint, config.captcha_timeout
         )
 
-    async def recognize(self, image_bytes: bytes) -> dict[str, Any]:
+    async def recognize(self, image_bytes: bytes, task_type: str | None = None) -> dict[str, Any] | str:
         processed = self._preprocess_image(image_bytes)
         b64 = base64.b64encode(processed).decode()
         data_url = f"data:image/png;base64,{b64}"
@@ -134,6 +141,8 @@ class CaptchaRecognizer:
         for client_name, client, endpoint in client_plan:
             for attempt in range(self._config.captcha_retries):
                 try:
+                    if task_type in {"ImageToTextTask", "ImageToTextTaskMuggle", "ImageToTextTaskM1"}:
+                        return await self._call_ocr_model(client, endpoint, data_url)
                     return await self._call_model(client, endpoint, data_url)
                 except Exception as exc:
                     last_error = exc
@@ -193,6 +202,42 @@ class CaptchaRecognizer:
         raw = response.choices[0].message.content or ""
         return self._parse_json(raw)
 
+    async def _call_ocr_model(
+        self,
+        client,
+        endpoint,
+        data_url: str,
+    ) -> str:
+        response = await client.chat.completions.create(
+            **apply_chat_options(
+                endpoint,
+                {
+                    "temperature": 0,
+                    "max_tokens": 64,
+                    "messages": [
+                        {"role": "system", "content": OCR_SYSTEM_PROMPT},
+                        {
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": data_url, "detail": "high"},
+                                },
+                                {
+                                    "type": "text",
+                                    "text": OCR_USER_PROMPT,
+                                },
+                            ],
+                        },
+                    ],
+                },
+            )
+        )
+        raw = (response.choices[0].message.content or "").strip()
+        if not raw:
+            raise ValueError("OCR response was empty")
+        return raw.strip().strip("`").strip()
+
     @staticmethod
     def _parse_json(text: str) -> dict[str, Any]:
         # Strip markdown fences if present
@@ -238,5 +283,8 @@ class CaptchaRecognizer:
         if not body:
             raise ValueError("Missing 'body' field (base64 image)")
         image_bytes = base64.b64decode(body)
-        result = await self.recognize(image_bytes)
+        task_type = params.get("type")
+        result = await self.recognize(image_bytes, task_type=task_type)
+        if isinstance(result, str):
+            return {"text": result}
         return {"text": json.dumps(result)}

@@ -54,19 +54,7 @@ class HCaptchaSolver:
         if self._browser_service.enabled:
             log.info("HCaptchaSolver using BrowserService backend")
             return
-        if self._browser is not None:
-            return
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=self._config.browser_headless,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ],
-        )
-        log.info("HCaptchaSolver browser started")
+        log.info("HCaptchaSolver defers local browser startup until first solve")
 
     async def stop(self) -> None:
         if self._browser_service.enabled:
@@ -86,6 +74,7 @@ class HCaptchaSolver:
                 raise RuntimeError(f"BrowserService returned invalid hCaptcha result: {result}")
             return result
 
+        await self._ensure_browser()
         website_url = params["websiteURL"]
         website_key = params["websiteKey"]
 
@@ -154,3 +143,18 @@ class HCaptchaSolver:
             return token
         finally:
             await context.close()
+
+    async def _ensure_browser(self) -> None:
+        if self._browser is not None:
+            return
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(
+            headless=self._config.browser_headless,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        )
+        log.info("HCaptchaSolver browser started lazily")

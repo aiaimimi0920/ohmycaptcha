@@ -61,19 +61,7 @@ class RecaptchaV3Solver:
         if self._browser_service.enabled:
             log.info("RecaptchaV3Solver using BrowserService backend")
             return
-        self._playwright = await async_playwright().start()
-        self._browser = await self._playwright.chromium.launch(
-            headless=self._config.browser_headless,
-            args=[
-                "--disable-blink-features=AutomationControlled",
-                "--no-sandbox",
-                "--disable-dev-shm-usage",
-                "--disable-gpu",
-            ],
-        )
-        log.info(
-            "Playwright browser started (headless=%s)", self._config.browser_headless
-        )
+        log.info("RecaptchaV3Solver defers local browser startup until first solve")
 
     async def stop(self) -> None:
         if self._browser_service.enabled:
@@ -92,6 +80,7 @@ class RecaptchaV3Solver:
                 raise RuntimeError(f"BrowserService returned invalid reCAPTCHA v3 result: {result}")
             return result
 
+        await self._ensure_browser()
         website_url = params["websiteURL"]
         website_key = params["websiteKey"]
         page_action = params.get("pageAction", "verify")
@@ -172,3 +161,18 @@ class RecaptchaV3Solver:
             return token
         finally:
             await context.close()
+
+    async def _ensure_browser(self) -> None:
+        if self._browser is not None:
+            return
+        self._playwright = await async_playwright().start()
+        self._browser = await self._playwright.chromium.launch(
+            headless=self._config.browser_headless,
+            args=[
+                "--disable-blink-features=AutomationControlled",
+                "--no-sandbox",
+                "--disable-dev-shm-usage",
+                "--disable-gpu",
+            ],
+        )
+        log.info("Playwright browser started lazily (headless=%s)", self._config.browser_headless)
