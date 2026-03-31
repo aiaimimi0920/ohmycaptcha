@@ -168,4 +168,6 @@ async def health() -> dict[str, object]:
         "browser_headless": config.browser_headless,
         "cloud_model": config.cloud_model,
         "local_model": config.local_model,
+        "captcha_model": config.captcha_model,
+        "captcha_multimodal_model": config.captcha_multimodal_model,
     }

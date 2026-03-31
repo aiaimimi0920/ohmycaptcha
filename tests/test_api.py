@@ -72,6 +72,8 @@ def test_health_endpoint() -> None:
     assert body["status"] == "ok"
     assert "cloud_model" in body
     assert "local_model" in body
+    assert "captcha_model" in body
+    assert "captcha_multimodal_model" in body
 
 
 def test_root_endpoint() -> None:

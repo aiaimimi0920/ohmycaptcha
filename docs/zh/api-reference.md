@@ -170,6 +170,8 @@
     "ImageToTextTask"
   ],
   "browser_headless": true,
+  "cloud_model": "gpt-5.4",
+  "local_model": "qwen3.5-2b",
   "captcha_model": "gpt-5.4",
   "captcha_multimodal_model": "qwen3.5-2b"
 }
