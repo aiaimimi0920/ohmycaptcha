@@ -13,6 +13,7 @@ from typing import Any
 from playwright.async_api import Browser, Playwright, async_playwright
 
 from ..core.config import Config
+from .browser_service_client import BrowserServiceClient
 
 log = logging.getLogger(__name__)
 
@@ -47,8 +48,12 @@ class HCaptchaSolver:
         self._playwright: Playwright | None = None
         self._browser: Browser | None = browser
         self._owns_browser = browser is None
+        self._browser_service = BrowserServiceClient(config)
 
     async def start(self) -> None:
+        if self._browser_service.enabled:
+            log.info("HCaptchaSolver using BrowserService backend")
+            return
         if self._browser is not None:
             return
         self._playwright = await async_playwright().start()
@@ -64,6 +69,9 @@ class HCaptchaSolver:
         log.info("HCaptchaSolver browser started")
 
     async def stop(self) -> None:
+        if self._browser_service.enabled:
+            log.info("HCaptchaSolver BrowserService backend requires no local browser stop")
+            return
         if self._owns_browser:
             if self._browser:
                 await self._browser.close()
@@ -72,6 +80,12 @@ class HCaptchaSolver:
         log.info("HCaptchaSolver stopped")
 
     async def solve(self, params: dict[str, Any]) -> dict[str, Any]:
+        if self._browser_service.enabled:
+            result = await self._browser_service.solve("captcha.hcaptcha", params)
+            if "gRecaptchaResponse" not in result:
+                raise RuntimeError(f"BrowserService returned invalid hCaptcha result: {result}")
+            return result
+
         website_url = params["websiteURL"]
         website_key = params["websiteKey"]
 

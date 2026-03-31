@@ -16,10 +16,14 @@ import logging
 import re
 from typing import Any
 
-from openai import AsyncOpenAI
 from PIL import Image
 
 from ..core.config import Config
+from .openai_compat import (
+    apply_chat_options,
+    create_async_openai_client,
+    get_local_endpoint,
+)
 
 log = logging.getLogger(__name__)
 
@@ -90,9 +94,9 @@ class ClassificationSolver:
 
     def __init__(self, config: Config) -> None:
         self._config = config
-        self._client = AsyncOpenAI(
-            base_url=config.local_base_url,
-            api_key=config.local_api_key,
+        self._endpoint = get_local_endpoint(config)
+        self._client = create_async_openai_client(
+            self._endpoint, config.captcha_timeout
         )
 
     async def solve(self, params: dict[str, Any]) -> dict[str, Any]:
@@ -175,13 +179,17 @@ class ClassificationSolver:
         for attempt in range(self._config.captcha_retries):
             try:
                 response = await self._client.chat.completions.create(
-                    model=self._config.captcha_multimodal_model,
-                    temperature=0.05,
-                    max_tokens=512,
-                    messages=[
-                        {"role": "system", "content": system_prompt},
-                        {"role": "user", "content": content},
-                    ],
+                    **apply_chat_options(
+                        self._endpoint,
+                        {
+                            "temperature": 0.05,
+                            "max_tokens": 512,
+                            "messages": [
+                                {"role": "system", "content": system_prompt},
+                                {"role": "user", "content": content},
+                            ],
+                        },
+                    ),
                 )
                 raw = response.choices[0].message.content or ""
                 return self._parse_json(raw)

@@ -44,9 +44,9 @@
 
 | Capability | Details |
 |-----------|---------|
-| **Browser automation** | Playwright + Chromium for reCAPTCHA v2/v3, hCaptcha, Cloudflare Turnstile |
-| **Image recognition** | Local multimodal model (Qwen3.5-2B via SGLang) for image captcha analysis |
-| **Image classification** | Local vision model for HCaptcha, reCAPTCHA v2, FunCaptcha, AWS grid classification |
+| **Browser automation** | Local Playwright + Chromium, or delegated execution via BrowserService |
+| **Image recognition** | Local or cloud multimodal model for image captcha analysis |
+| **Image classification** | Local or cloud vision model for HCaptcha, reCAPTCHA v2, FunCaptcha, AWS grid classification |
 | **API compatibility** | Full YesCaptcha `createTask`/`getTaskResult`/`getBalance` protocol |
 | **Deployment** | Local, Render, Hugging Face Spaces with Docker support |
 
@@ -59,14 +59,29 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 playwright install --with-deps chromium
 
-# Local model (self-hosted via SGLang)
+# Option A: use a local model service
 export LOCAL_BASE_URL="http://localhost:30000/v1"
+export LOCAL_API_KEY="EMPTY"
 export LOCAL_MODEL="Qwen/Qwen3.5-2B"
 
-# Cloud model (remote API)
-export CLOUD_BASE_URL="https://your-openai-compatible-endpoint/v1"
-export CLOUD_API_KEY="your-api-key"
-export CLOUD_MODEL="gpt-5.4"
+# Option B: use a cloud OpenAI-compatible service for both local/cloud slots
+export OPENAI_BASE_URL="https://your-openai-compatible-endpoint/v1"
+export OPENAI_API_KEY="your-api-key"
+export OPENAI_MODEL="gpt-5.4"
+
+# Dedicated cloud slot (also used for audio fallback)
+export CLOUD_BASE_URL="${OPENAI_BASE_URL}"
+export CLOUD_API_KEY="${OPENAI_API_KEY}"
+export CLOUD_MODEL="${OPENAI_MODEL}"
+
+# Optional XFYun MaaS resource IDs (for service cards that require lora_id)
+export CLOUD_RESOURCE_ID="0"
+export LOCAL_RESOURCE_ID="0"
+
+# Optional BrowserService delegation
+export BROWSER_BACKEND="local"   # or "browserservice"
+export BROWSER_SERVICE_BASE_URL="http://127.0.0.1:7777"
+export BROWSER_SERVICE_PROVIDER="chrome"
 
 export CLIENT_KEY="your-client-key"
 python main.py
@@ -96,6 +111,7 @@ curl http://localhost:8000/api/v1/health
 - **TurnstileSolver** — Playwright-based Cloudflare Turnstile solving
 - **CaptchaRecognizer** — Argus-inspired multimodal image analysis
 - **ClassificationSolver** — Vision model-based image classification
+- **BrowserServiceClient** — optional HTTP adapter for delegating browser tasks to EasyBrowser / BrowserService
 
 ---
 

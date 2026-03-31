@@ -166,8 +166,12 @@ async def health() -> dict[str, object]:
         "status": "ok",
         "supported_task_types": task_manager.supported_types(),
         "browser_headless": config.browser_headless,
+        "browser_backend": config.browser_backend,
+        "browser_service_base_url": config.browser_service_base_url,
         "cloud_model": config.cloud_model,
         "local_model": config.local_model,
         "captcha_model": config.captcha_model,
         "captcha_multimodal_model": config.captcha_multimodal_model,
+        "cloud_resource_id": config.cloud_resource_id,
+        "local_resource_id": config.local_resource_id,
     }

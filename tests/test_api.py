@@ -20,6 +20,9 @@ from fastapi.testclient import TestClient
 def _load_app(*, client_key: str | None = None) -> TestClient:
     """Reload modules with fresh env vars and return a test client."""
     os.environ.pop("CLIENT_KEY", None)
+    os.environ.pop("OPENAI_BASE_URL", None)
+    os.environ.pop("OPENAI_API_KEY", None)
+    os.environ.pop("OPENAI_MODEL", None)
     os.environ.setdefault("CAPTCHA_BASE_URL", "https://example.com/v1")
     os.environ.setdefault("CAPTCHA_API_KEY", "test-key")
     os.environ.setdefault("CAPTCHA_MODEL", "gpt-5.4")
@@ -74,6 +77,9 @@ def test_health_endpoint() -> None:
     assert "local_model" in body
     assert "captcha_model" in body
     assert "captcha_multimodal_model" in body
+    assert "browser_backend" in body
+    assert "cloud_resource_id" in body
+    assert "local_resource_id" in body
 
 
 def test_root_endpoint() -> None:
@@ -258,6 +264,30 @@ def test_get_task_result_not_found() -> None:
     body = response.json()
     assert body["errorId"] == 1
     assert body["errorCode"] == "ERROR_NO_SUCH_CAPCHA_ID"
+
+
+def test_openai_aliases_feed_cloud_and_local_config() -> None:
+    os.environ["OPENAI_BASE_URL"] = "https://openai-alias.example/v1"
+    os.environ["OPENAI_API_KEY"] = "alias-key"
+    os.environ["OPENAI_MODEL"] = "alias-model"
+    os.environ["OPENAI_RESOURCE_ID"] = "0"
+    try:
+        config_mod = importlib.import_module("src.core.config")
+        config_mod = importlib.reload(config_mod)
+        cfg = getattr(config_mod, "config")
+        assert cfg.cloud_base_url == "https://openai-alias.example/v1"
+        assert cfg.cloud_api_key == "alias-key"
+        assert cfg.cloud_model == "alias-model"
+        assert cfg.cloud_resource_id == "0"
+        assert cfg.local_base_url == "https://openai-alias.example/v1"
+        assert cfg.local_api_key == "alias-key"
+        assert cfg.local_model == "alias-model"
+        assert cfg.local_resource_id == "0"
+    finally:
+        os.environ.pop("OPENAI_BASE_URL", None)
+        os.environ.pop("OPENAI_API_KEY", None)
+        os.environ.pop("OPENAI_MODEL", None)
+        os.environ.pop("OPENAI_RESOURCE_ID", None)
 
 
 def test_create_recaptcha_v3_task_accepted() -> None:

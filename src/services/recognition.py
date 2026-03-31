@@ -14,11 +14,15 @@ import logging
 import re
 from typing import Any
 
-import httpx
-from openai import AsyncOpenAI
 from PIL import Image
 
 from ..core.config import Config
+from .openai_compat import (
+    apply_chat_options,
+    create_async_openai_client,
+    get_cloud_endpoint,
+    get_local_endpoint,
+)
 
 log = logging.getLogger(__name__)
 
@@ -95,23 +99,13 @@ class CaptchaRecognizer:
 
     def __init__(self, config: Config) -> None:
         self._config = config
-        self._local_client = AsyncOpenAI(
-            base_url=config.local_base_url,
-            api_key=config.local_api_key,
-            max_retries=0,
-            http_client=httpx.AsyncClient(
-                timeout=httpx.Timeout(float(config.captcha_timeout)),
-                trust_env=False,
-            ),
+        self._local_endpoint = get_local_endpoint(config)
+        self._cloud_endpoint = get_cloud_endpoint(config)
+        self._local_client = create_async_openai_client(
+            self._local_endpoint, config.captcha_timeout
         )
-        self._cloud_client = AsyncOpenAI(
-            base_url=config.cloud_base_url,
-            api_key=config.cloud_api_key,
-            max_retries=0,
-            http_client=httpx.AsyncClient(
-                timeout=httpx.Timeout(float(config.captcha_timeout)),
-                trust_env=False,
-            ),
+        self._cloud_client = create_async_openai_client(
+            self._cloud_endpoint, config.captcha_timeout
         )
 
     async def recognize(self, image_bytes: bytes) -> dict[str, Any]:
@@ -126,15 +120,21 @@ class CaptchaRecognizer:
 
         last_error: Exception | None = None
         client_plan = (
-            [("local", self._local_client, self._config.captcha_multimodal_model), ("cloud", self._cloud_client, self._config.cloud_model)]
+            [
+                ("local", self._local_client, self._local_endpoint),
+                ("cloud", self._cloud_client, self._cloud_endpoint),
+            ]
             if local_first
-            else [("cloud", self._cloud_client, self._config.cloud_model), ("local", self._local_client, self._config.captcha_multimodal_model)]
+            else [
+                ("cloud", self._cloud_client, self._cloud_endpoint),
+                ("local", self._local_client, self._local_endpoint),
+            ]
         )
 
-        for client_name, client, model in client_plan:
+        for client_name, client, endpoint in client_plan:
             for attempt in range(self._config.captcha_retries):
                 try:
-                    return await self._call_model(client, model, data_url)
+                    return await self._call_model(client, endpoint, data_url)
                 except Exception as exc:
                     last_error = exc
                     error_details = self._describe_exception(exc)
@@ -160,30 +160,34 @@ class CaptchaRecognizer:
 
     async def _call_model(
         self,
-        client: AsyncOpenAI,
-        model: str,
+        client,
+        endpoint,
         data_url: str,
     ) -> dict[str, Any]:
         response = await client.chat.completions.create(
-            model=model,
-            temperature=0.05,
-            max_tokens=1024,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+            **apply_chat_options(
+                endpoint,
                 {
-                    "role": "user",
-                    "content": [
+                    "temperature": 0.05,
+                    "max_tokens": 1024,
+                    "messages": [
+                        {"role": "system", "content": SYSTEM_PROMPT},
                         {
-                            "type": "image_url",
-                            "image_url": {"url": data_url, "detail": "high"},
-                        },
-                        {
-                            "type": "text",
-                            "text": USER_PROMPT,
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": data_url, "detail": "high"},
+                                },
+                                {
+                                    "type": "text",
+                                    "text": USER_PROMPT,
+                                },
+                            ],
                         },
                     ],
                 },
-            ],
+            )
         )
 
         raw = response.choices[0].message.content or ""

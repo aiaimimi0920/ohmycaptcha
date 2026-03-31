@@ -32,11 +32,13 @@ class Config:
     cloud_base_url: str
     cloud_api_key: str
     cloud_model: str
+    cloud_resource_id: str | None
 
     # ── Local model (self-hosted via SGLang / vLLM) ──
     local_base_url: str
     local_api_key: str
     local_model: str
+    local_resource_id: str | None
 
     captcha_retries: int
     captcha_timeout: int
@@ -44,6 +46,12 @@ class Config:
     # Playwright browser
     browser_headless: bool
     browser_timeout: int  # seconds
+    browser_backend: str
+    browser_service_base_url: str | None
+    browser_service_api_key: str | None
+    browser_service_provider: str | None
+    browser_service_allowed_providers: tuple[str, ...]
+    browser_service_timeout: int
 
     # ── Convenience aliases (backward-compat) ──
 
@@ -65,6 +73,16 @@ class Config:
 
 
 def load_config() -> Config:
+    openai_base_url = os.environ.get("OPENAI_BASE_URL", "").strip()
+    openai_api_key = os.environ.get("OPENAI_API_KEY", "").strip()
+    openai_model = os.environ.get("OPENAI_MODEL", "").strip()
+    openai_resource_id = os.environ.get("OPENAI_RESOURCE_ID", "").strip()
+
+    browser_allowed_providers_raw = os.environ.get("BROWSER_SERVICE_ALLOWED_PROVIDERS", "")
+    browser_allowed_providers = tuple(
+        item.strip() for item in browser_allowed_providers_raw.split(",") if item.strip()
+    )
+
     return Config(
         server_host=os.environ.get("SERVER_HOST", "0.0.0.0"),
         server_port=int(os.environ.get("SERVER_PORT", "8000")),
@@ -72,43 +90,62 @@ def load_config() -> Config:
         # Cloud model
         cloud_base_url=os.environ.get(
             "CLOUD_BASE_URL",
-            os.environ.get("CAPTCHA_BASE_URL", "https://your-openai-compatible-endpoint/v1"),
+            openai_base_url
+            or os.environ.get("CAPTCHA_BASE_URL", "https://your-openai-compatible-endpoint/v1"),
         ),
         cloud_api_key=os.environ.get(
             "CLOUD_API_KEY",
-            os.environ.get("CAPTCHA_API_KEY", ""),
+            openai_api_key or os.environ.get("CAPTCHA_API_KEY", ""),
         ),
         cloud_model=os.environ.get(
             "CLOUD_MODEL",
-            os.environ.get("CAPTCHA_MODEL", "gpt-5.4"),
+            openai_model or os.environ.get("CAPTCHA_MODEL", "gpt-5.4"),
         ),
+        cloud_resource_id=os.environ.get("CLOUD_RESOURCE_ID", "").strip()
+        or openai_resource_id
+        or None,
         # Local model
         local_base_url=os.environ.get(
             "LOCAL_BASE_URL",
-            os.environ.get(
+            openai_base_url
+            or os.environ.get(
                 "CLOUD_BASE_URL",
                 os.environ.get("CAPTCHA_BASE_URL", "http://localhost:30000/v1"),
             ),
         ),
         local_api_key=os.environ.get(
             "LOCAL_API_KEY",
-            os.environ.get(
+            openai_api_key
+            or os.environ.get(
                 "CLOUD_API_KEY",
                 os.environ.get("CAPTCHA_API_KEY", "EMPTY"),
             ),
         ),
         local_model=os.environ.get(
             "LOCAL_MODEL",
-            os.environ.get(
+            openai_model
+            or os.environ.get(
                 "CLOUD_MODEL",
                 os.environ.get("CAPTCHA_MULTIMODAL_MODEL", "Qwen/Qwen3.5-2B"),
             ),
         ),
+        local_resource_id=os.environ.get("LOCAL_RESOURCE_ID", "").strip()
+        or openai_resource_id
+        or None,
         captcha_retries=int(os.environ.get("CAPTCHA_RETRIES", "3")),
         captcha_timeout=int(os.environ.get("CAPTCHA_TIMEOUT", "30")),
         browser_headless=os.environ.get("BROWSER_HEADLESS", "true").strip().lower()
         in {"1", "true", "yes"},
         browser_timeout=int(os.environ.get("BROWSER_TIMEOUT", "30")),
+        browser_backend=os.environ.get("BROWSER_BACKEND", "local").strip().lower() or "local",
+        browser_service_base_url=os.environ.get("BROWSER_SERVICE_BASE_URL", "").strip()
+        or None,
+        browser_service_api_key=os.environ.get("BROWSER_SERVICE_API_KEY", "").strip()
+        or None,
+        browser_service_provider=os.environ.get("BROWSER_SERVICE_PROVIDER", "").strip()
+        or None,
+        browser_service_allowed_providers=browser_allowed_providers,
+        browser_service_timeout=int(os.environ.get("BROWSER_SERVICE_TIMEOUT", "90")),
     )
 
 

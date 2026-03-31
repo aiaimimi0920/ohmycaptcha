@@ -1,8 +1,11 @@
-# Local Model Deployment
+# Local / Cloud Model Deployment
 
 OhMyCaptcha supports running image recognition and classification tasks on a **locally hosted model** served via [SGLang](https://github.com/sgl-project/sglang), [vLLM](https://github.com/vllm-project/vllm), or any OpenAI-compatible inference server.
 
-This guide covers deploying [Qwen3.5-2B](https://modelscope.cn/models/Qwen/Qwen3.5-2B) locally with SGLang.
+This guide covers both:
+
+- deploying [Qwen3.5-2B](https://modelscope.cn/models/Qwen/Qwen3.5-2B) locally with SGLang
+- using a cloud OpenAI-compatible service for the same image/classification slots
 
 ## Architecture: Local vs Cloud
 
@@ -10,8 +13,9 @@ OhMyCaptcha uses two model backends:
 
 | Backend | Role | Env vars | Default |
 |---------|------|----------|---------|
-| **Local model** | Image recognition & classification (high-throughput, self-hosted) | `LOCAL_BASE_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL` | `http://localhost:30000/v1`, `EMPTY`, `Qwen/Qwen3.5-2B` |
-| **Cloud model** | Audio transcription & complex reasoning (powerful remote API) | `CLOUD_BASE_URL`, `CLOUD_API_KEY`, `CLOUD_MODEL` | External endpoint, your key, `gpt-5.4` |
+| **Local model** | Image recognition & classification (high-throughput, self-hosted or cloud-substituted) | `LOCAL_BASE_URL`, `LOCAL_API_KEY`, `LOCAL_MODEL`, `LOCAL_RESOURCE_ID` | `http://localhost:30000/v1`, `EMPTY`, `Qwen/Qwen3.5-2B`, unset |
+| **Cloud model** | Audio transcription & complex reasoning (powerful remote API) | `CLOUD_BASE_URL`, `CLOUD_API_KEY`, `CLOUD_MODEL`, `CLOUD_RESOURCE_ID` | External endpoint, your key, `gpt-5.4`, unset |
+| **Global alias** | Shortcut for cloud-first deployments | `OPENAI_BASE_URL`, `OPENAI_API_KEY`, `OPENAI_MODEL`, `OPENAI_RESOURCE_ID` | unset |
 
 ```
 ┌────────────────────────────────────────────────────────────┐
@@ -88,7 +92,7 @@ You should receive a valid JSON response with model output.
 
 ## Step 4: Configure OhMyCaptcha
 
-Set the local model env vars to point at your SGLang server:
+Set the model env vars to point at your chosen backend:
 
 ```bash
 # Local model (self-hosted via SGLang)
@@ -100,11 +104,28 @@ export LOCAL_MODEL="Qwen/Qwen3.5-2B"
 export CLOUD_BASE_URL="https://your-api-endpoint/v1"
 export CLOUD_API_KEY="sk-your-key"
 export CLOUD_MODEL="gpt-5.4"
+export CLOUD_RESOURCE_ID=""
+
+# Optional cloud-first shortcut: fills both local/cloud defaults
+export OPENAI_BASE_URL="https://your-api-endpoint/v1"
+export OPENAI_API_KEY="sk-your-key"
+export OPENAI_MODEL="gpt-5.4"
+export OPENAI_RESOURCE_ID=""
 
 # Other config
 export CLIENT_KEY="your-client-key"
 export BROWSER_HEADLESS=true
 ```
+
+### Optional: XFYun MaaS HTTP service
+
+If your cloud model comes from XFYun MaaS HTTP service:
+
+- set `*_BASE_URL` to the service URL such as `https://maas-api.cn-huabei-1.xf-yun.com/v2`
+- set `*_MODEL` to the service card `modelId`
+- if the service card requires a `resourceId`, set `*_RESOURCE_ID`, which is sent as the `lora_id` header
+
+This project keeps the OpenAI-compatible request shape and injects `lora_id` automatically when `*_RESOURCE_ID` is configured.
 
 ## Step 5: Start OhMyCaptcha
 
@@ -144,7 +165,7 @@ No changes to the OhMyCaptcha configuration are needed — both SGLang and vLLM 
 
 ## Backward compatibility
 
-The legacy environment variables (`CAPTCHA_BASE_URL`, `CAPTCHA_API_KEY`, `CAPTCHA_MODEL`, `CAPTCHA_MULTIMODAL_MODEL`) are still supported as fallbacks. If you set `CAPTCHA_BASE_URL` without setting `CLOUD_BASE_URL`, the old value will be used. The new `LOCAL_*` and `CLOUD_*` variables take precedence when set.
+The legacy environment variables (`CAPTCHA_BASE_URL`, `CAPTCHA_API_KEY`, `CAPTCHA_MODEL`, `CAPTCHA_MULTIMODAL_MODEL`) are still supported as fallbacks. If you set `CAPTCHA_BASE_URL` without setting `CLOUD_BASE_URL`, the old value will be used. The new `LOCAL_*`, `CLOUD_*`, and `OPENAI_*` variables take precedence when set.
 
 ## Recommended models
 

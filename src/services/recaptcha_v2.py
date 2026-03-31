@@ -22,6 +22,12 @@ import httpx
 from playwright.async_api import Browser, Playwright, async_playwright
 
 from ..core.config import Config
+from .browser_service_client import BrowserServiceClient
+from .openai_compat import (
+    apply_chat_options,
+    create_async_openai_client,
+    get_cloud_endpoint,
+)
 
 log = logging.getLogger(__name__)
 
@@ -61,8 +67,16 @@ class RecaptchaV2Solver:
         self._playwright: Playwright | None = None
         self._browser: Browser | None = browser
         self._owns_browser = browser is None
+        self._browser_service = BrowserServiceClient(config)
+        self._cloud_endpoint = get_cloud_endpoint(config)
+        self._cloud_client = create_async_openai_client(
+            self._cloud_endpoint, config.captcha_timeout
+        )
 
     async def start(self) -> None:
+        if self._browser_service.enabled:
+            log.info("RecaptchaV2Solver using BrowserService backend")
+            return
         if self._browser is not None:
             return
         self._playwright = await async_playwright().start()
@@ -78,6 +92,9 @@ class RecaptchaV2Solver:
         log.info("RecaptchaV2Solver browser started")
 
     async def stop(self) -> None:
+        if self._browser_service.enabled:
+            log.info("RecaptchaV2Solver BrowserService backend requires no local browser stop")
+            return
         if self._owns_browser:
             if self._browser:
                 await self._browser.close()
@@ -86,6 +103,12 @@ class RecaptchaV2Solver:
         log.info("RecaptchaV2Solver stopped")
 
     async def solve(self, params: dict[str, Any]) -> dict[str, Any]:
+        if self._browser_service.enabled:
+            result = await self._browser_service.solve("captcha.recaptcha_v2", params)
+            if "gRecaptchaResponse" not in result:
+                raise RuntimeError(f"BrowserService returned invalid reCAPTCHA v2 result: {result}")
+            return result
+
         website_url = params["websiteURL"]
         website_key = params["websiteKey"]
         is_invisible = params.get("isInvisible", False)
@@ -240,39 +263,33 @@ class RecaptchaV2Solver:
         import base64
 
         audio_b64 = base64.b64encode(audio_bytes).decode()
-        payload = {
-            "model": self._config.captcha_model,
-            "messages": [
+        response = await self._cloud_client.chat.completions.create(
+            **apply_chat_options(
+                self._cloud_endpoint,
                 {
-                    "role": "user",
-                    "content": [
+                    "messages": [
                         {
-                            "type": "text",
-                            "text": (
-                                "This is a reCAPTCHA audio challenge. "
-                                "The audio contains spoken digits or words. "
-                                "Transcribe exactly what is spoken, digits only, "
-                                "separated by spaces. Reply with only the transcription."
-                            ),
-                        },
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:audio/mp3;base64,{audio_b64}"},
-                        },
+                            "role": "user",
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": (
+                                        "This is a reCAPTCHA audio challenge. "
+                                        "The audio contains spoken digits or words. "
+                                        "Transcribe exactly what is spoken, digits only, "
+                                        "separated by spaces. Reply with only the transcription."
+                                    ),
+                                },
+                                {
+                                    "type": "image_url",
+                                    "image_url": {"url": f"data:audio/mp3;base64,{audio_b64}"},
+                                },
+                            ],
+                        }
                     ],
-                }
-            ],
-            "max_tokens": 50,
-            "temperature": 0,
-        }
-
-        async with httpx.AsyncClient(timeout=30) as client:
-            resp = await client.post(
-                f"{self._config.captcha_base_url}/chat/completions",
-                headers={"Authorization": f"Bearer {self._config.captcha_api_key}"},
-                json=payload,
+                    "max_tokens": 50,
+                    "temperature": 0,
+                },
             )
-            if resp.status_code != 200:
-                raise RuntimeError(f"Transcription API error {resp.status_code}: {resp.text[:200]}")
-            data = resp.json()
-            return data["choices"][0]["message"]["content"].strip()
+        )
+        return (response.choices[0].message.content or "").strip()
