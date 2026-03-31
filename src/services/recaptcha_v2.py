@@ -15,6 +15,7 @@ Strategy:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -30,6 +31,7 @@ from .openai_compat import (
 )
 
 log = logging.getLogger(__name__)
+_RECAPTCHA_V2_INVISIBLE_ATTR = "data-easybrowser-recaptcha-v2-token"
 
 _STEALTH_JS = """
 Object.defineProperty(navigator, 'webdriver', {get: () => undefined});
@@ -161,7 +163,25 @@ class RecaptchaV2Solver:
         await asyncio.sleep(0.5)
 
         if is_invisible:
-            token = await page.evaluate(
+            token = await self._execute_invisible_token(page, website_key)
+        else:
+            token = await self._solve_checkbox(page)
+
+        if not isinstance(token, str) or len(token) < 20:
+            raise RuntimeError(f"Invalid reCAPTCHA v2 token: {token!r}")
+
+        log.info("Got reCAPTCHA v2 token (len=%d)", len(token))
+        return token
+
+    async def _evaluate(self, page: Any, expression: str, arg: Any = None) -> Any:
+        if getattr(page, "_easybrowser_browser_name", "") == "firefox":
+            expression = "mw:" + expression
+        return await page.evaluate(expression, arg)
+
+    async def _execute_invisible_token(self, page: Any, website_key: str) -> Any:
+        if getattr(page, "_easybrowser_browser_name", "") != "firefox":
+            return await self._evaluate(
+                page,
                 """
                 ([key]) => new Promise((resolve, reject) => {
                     const gr = window.grecaptcha?.enterprise || window.grecaptcha;
@@ -173,14 +193,36 @@ class RecaptchaV2Solver:
                 """,
                 [website_key],
             )
-        else:
-            token = await self._solve_checkbox(page)
 
-        if not isinstance(token, str) or len(token) < 20:
-            raise RuntimeError(f"Invalid reCAPTCHA v2 token: {token!r}")
+        expression = (
+            "mw:(() => {"
+            f"const key = {json.dumps(website_key)};"
+            f"const attrName = {json.dumps(_RECAPTCHA_V2_INVISIBLE_ATTR)};"
+            "document.documentElement.removeAttribute(attrName);"
+            "const write = (value) => { document.documentElement.setAttribute(attrName, String(value ?? '')); };"
+            "try {"
+            "const gr = window.grecaptcha?.enterprise || window.grecaptcha;"
+            "if (!gr) { throw new Error('grecaptcha not found'); }"
+            "gr.ready(() => { gr.execute(key).then(write).catch((error) => write('ERROR:' + String(error))); });"
+            "} catch (error) { write('ERROR:' + String(error)); }"
+            "})()"
+        )
+        await page.evaluate(expression)
 
-        log.info("Got reCAPTCHA v2 token (len=%d)", len(token))
-        return token
+        for _ in range(40):
+            await asyncio.sleep(0.25)
+            token = await page.evaluate(
+                "([attrName]) => document.documentElement.getAttribute(attrName)",
+                [_RECAPTCHA_V2_INVISIBLE_ATTR],
+            )
+            if isinstance(token, str) and token.startswith("ERROR:"):
+                raise RuntimeError(token[6:])
+            if isinstance(token, str) and token:
+                return token
+
+        raise RuntimeError(
+            "Timed out waiting for invisible reCAPTCHA v2 token from main-world bridge"
+        )
 
     async def _solve_checkbox(self, page: Any) -> str | None:
         """Click the reCAPTCHA checkbox. If a visual challenge appears, try audio path."""

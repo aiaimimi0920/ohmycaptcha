@@ -23,13 +23,17 @@ class BrowserServiceLease:
     runtime_id: str
     task_id: str
     resource_id: str | None
-    debug_port: int
+    attach_scope: str
+    attach_transport: str
+    attach_endpoint: str
+    attach_browser_name: str
+    attach_target_id: str | None
     metadata: dict[str, Any]
     result: dict[str, Any]
 
     @property
-    def cdp_url(self) -> str:
-        return f"http://127.0.0.1:{self.debug_port}"
+    def attach_url(self) -> str:
+        return self.attach_endpoint
 
 
 @dataclass
@@ -133,8 +137,11 @@ class BrowserServiceClient:
         page: Page | None = None
         context: BrowserContext | None = None
         try:
-            browser = await playwright.chromium.connect_over_cdp(lease.cdp_url)
+            browser = await self._connect_to_leased_browser(playwright, lease)
             context, page = await self._resolve_leased_page(browser, lease)
+            setattr(page, "_easybrowser_browser_name", lease.attach_browser_name)
+            setattr(page, "_easybrowser_attach_transport", lease.attach_transport)
+            setattr(page, "_easybrowser_provider_id", lease.provider_id)
             yield AttachedBrowserPage(
                 lease=lease,
                 playwright=playwright,
@@ -154,47 +161,119 @@ class BrowserServiceClient:
                 pass
             await self.close_page_lease(lease)
 
+    async def _connect_to_leased_browser(
+        self,
+        playwright: Playwright,
+        lease: BrowserServiceLease,
+    ) -> Browser:
+        transport = lease.attach_transport
+        browser_name = lease.attach_browser_name
+        endpoint = lease.attach_url
+
+        if transport == "cdp":
+            return await playwright.chromium.connect_over_cdp(endpoint)
+
+        if transport == "playwright_ws":
+            browser_type = self._get_browser_type(playwright, browser_name)
+            return await browser_type.connect(endpoint)
+
+        raise RuntimeError(
+            f"BrowserService returned unsupported attach transport={transport!r}"
+        )
+
     async def _resolve_leased_page(
         self,
         browser: Browser,
         lease: BrowserServiceLease,
     ) -> tuple[BrowserContext, Page]:
+        if lease.attach_scope == "browser":
+            context = await browser.new_context()
+            page = await context.new_page()
+            return context, page
+
         candidate_url = self._extract_lease_url(lease)
-        if lease.resource_id:
+
+        for _ in range(20):
+            if lease.attach_transport == "cdp" and lease.attach_target_id:
+                for context in browser.contexts:
+                    for page in context.pages:
+                        if await self._page_matches_cdp_target(
+                            context,
+                            page,
+                            lease.attach_target_id,
+                        ):
+                            return context, page
+
+            if lease.resource_id:
+                for context in browser.contexts:
+                    for page in context.pages:
+                        if await self._page_matches_resource_marker(page, lease.resource_id):
+                            return context, page
+
             for context in browser.contexts:
                 for page in context.pages:
-                    if await self._page_matches_resource_id(context, page, lease.resource_id):
+                    if candidate_url and page.url == candidate_url:
                         return context, page
 
-        for context in browser.contexts:
-            for page in context.pages:
-                if candidate_url and page.url == candidate_url:
-                    return context, page
+            await asyncio.sleep(0.25)
 
-        context = browser.contexts[0] if browser.contexts else await browser.new_context()
-        page = await context.new_page()
-        return context, page
+        raise RuntimeError(
+            f"BrowserService attached browser did not expose leased page resource_id={lease.resource_id!r} "
+            f"target_id={lease.attach_target_id!r} url={candidate_url!r}"
+        )
 
-    async def _page_matches_resource_id(
+    async def _page_matches_cdp_target(
         self,
         context: BrowserContext,
         page: Page,
-        resource_id: str,
+        expected_target_id: str,
     ) -> bool:
         try:
             session = await context.new_cdp_session(page)
             info = await session.send("Target.getTargetInfo")
             target_info = info.get("targetInfo") if isinstance(info, dict) else None
-            target_id = (
+            actual_target_id = (
                 target_info.get("targetId")
                 if isinstance(target_info, dict)
                 else None
             )
-            return bool(target_id and str(target_id) == resource_id)
+            return bool(
+                actual_target_id
+                and str(actual_target_id) == str(expected_target_id)
+            )
         except Exception:
             return False
 
+    async def _page_matches_resource_marker(
+        self,
+        page: Page,
+        resource_id: str,
+    ) -> bool:
+        try:
+            marker = await page.evaluate("window.__easybrowser_resource_id || null")
+            return bool(marker and str(marker) == resource_id)
+        except Exception:
+            return False
+
+    def _get_browser_type(self, playwright: Playwright, browser_name: str) -> Any:
+        normalized = (browser_name or "").strip().lower()
+        if normalized in {"chromium", "chrome"}:
+            return playwright.chromium
+        if normalized == "firefox":
+            return playwright.firefox
+        if normalized == "webkit":
+            return playwright.webkit
+        raise RuntimeError(
+            f"BrowserService returned unsupported browser_name={browser_name!r}"
+        )
+
     def _extract_lease_url(self, lease: BrowserServiceLease) -> str | None:
+        attach = lease.result.get("attach")
+        if isinstance(attach, dict):
+            url = attach.get("page_url")
+            if isinstance(url, str) and url:
+                return url
+
         resource = lease.result.get("resource")
         if isinstance(resource, dict):
             url = resource.get("url")
@@ -349,15 +428,26 @@ class BrowserServiceClient:
         metadata = result.get("metadata")
         if not isinstance(metadata, dict):
             metadata = {}
+        attach = result.get("attach")
+        if not isinstance(attach, dict):
+            attach = self._build_legacy_attach(metadata)
 
-        debug_port_raw = metadata.get("debug_port")
-        if debug_port_raw is None:
-            raise RuntimeError(f"BrowserService did not return debug_port metadata: {result}")
+        attach_scope = str(attach.get("scope") or "").strip().lower()
+        attach_transport = str(attach.get("transport") or "").strip().lower()
+        attach_endpoint = str(attach.get("endpoint") or "").strip()
+        attach_browser_name = str(attach.get("browser_name") or "").strip().lower()
+        attach_target_id_raw = attach.get("target_id")
+        attach_target_id = (
+            str(attach_target_id_raw)
+            if attach_target_id_raw is not None and str(attach_target_id_raw).strip()
+            else None
+        )
 
-        try:
-            debug_port = int(debug_port_raw)
-        except (TypeError, ValueError) as exc:
-            raise RuntimeError(f"BrowserService returned invalid debug_port={debug_port_raw!r}") from exc
+        if not attach_scope:
+            attach_scope = "page" if attach_transport == "cdp" else "browser"
+
+        if not attach_transport or not attach_endpoint or not attach_browser_name:
+            raise RuntimeError(f"BrowserService returned incomplete attach metadata: {result}")
 
         resource_id = (
             result.get("resource_id")
@@ -370,7 +460,30 @@ class BrowserServiceClient:
             runtime_id=str(route.get("runtime_id") or result.get("runtime_id") or ""),
             task_id=str(data.get("task_id") or ""),
             resource_id=str(resource_id) if resource_id else None,
-            debug_port=debug_port,
+            attach_scope=attach_scope,
+            attach_transport=attach_transport,
+            attach_endpoint=attach_endpoint,
+            attach_browser_name=attach_browser_name,
+            attach_target_id=attach_target_id,
             metadata=metadata,
             result=result,
         )
+
+    def _build_legacy_attach(self, metadata: dict[str, Any]) -> dict[str, Any]:
+        debug_port_raw = metadata.get("debug_port")
+        if debug_port_raw is None:
+            raise RuntimeError(
+                "BrowserService did not return attach metadata or legacy debug_port"
+            )
+        try:
+            debug_port = int(debug_port_raw)
+        except (TypeError, ValueError) as exc:
+            raise RuntimeError(
+                f"BrowserService returned invalid debug_port={debug_port_raw!r}"
+            ) from exc
+        return {
+            "scope": "page",
+            "transport": "cdp",
+            "endpoint": f"http://127.0.0.1:{debug_port}",
+            "browser_name": "chromium",
+        }

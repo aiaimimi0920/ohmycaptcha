@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 from typing import Any
 
@@ -12,6 +13,7 @@ from ..core.config import Config
 from .browser_service_client import BrowserServiceClient
 
 log = logging.getLogger(__name__)
+_RECAPTCHA_V3_TOKEN_ATTR = "data-easybrowser-recaptcha-v3-token"
 
 # JS executed inside the browser to obtain a reCAPTCHA v3 token.
 # Handles both standard and enterprise reCAPTCHA libraries.
@@ -150,20 +152,7 @@ class RecaptchaV3Solver:
         await asyncio.sleep(1)
         await page.mouse.move(600, 400)
         await asyncio.sleep(0.5)
-
-        # Wait for reCAPTCHA to become available (may already be on page)
-        try:
-            await page.wait_for_function(
-                "(typeof grecaptcha !== 'undefined' && typeof grecaptcha.execute === 'function') "
-                "|| (typeof grecaptcha !== 'undefined' && typeof grecaptcha?.enterprise?.execute === 'function')",
-                timeout=10_000,
-            )
-        except Exception:
-            log.info(
-                "grecaptcha not detected on page, will attempt script injection"
-            )
-
-        token = await page.evaluate(_EXECUTE_JS, [website_key, page_action])
+        token = await self._execute_token(page, website_key, page_action)
 
         if not isinstance(token, str) or len(token) < 20:
             raise RuntimeError(f"Invalid token received: {token!r}")
@@ -172,6 +161,53 @@ class RecaptchaV3Solver:
             "Got reCAPTCHA token for %s (len=%d)", website_url, len(token)
         )
         return token
+
+    async def _execute_token(
+        self,
+        page: Any,
+        website_key: str,
+        page_action: str,
+    ) -> Any:
+        if getattr(page, "_easybrowser_browser_name", "") != "firefox":
+            return await page.evaluate(_EXECUTE_JS, [website_key, page_action])
+
+        expression = (
+            "mw:(() => {"
+            f"const key = {json.dumps(website_key)};"
+            f"const action = {json.dumps(page_action)};"
+            f"const attrName = {json.dumps(_RECAPTCHA_V3_TOKEN_ATTR)};"
+            "document.documentElement.removeAttribute(attrName);"
+            "const write = (value) => { document.documentElement.setAttribute(attrName, String(value ?? '')); };"
+            "const run = () => {"
+            "const gr = window.grecaptcha?.enterprise || window.grecaptcha;"
+            "if (!gr || typeof gr.execute !== 'function') { throw new Error('grecaptcha still undefined after script load'); }"
+            "gr.ready(() => { gr.execute(key, {action}).then(write).catch((error) => write('ERROR:' + String(error))); });"
+            "};"
+            "try {"
+            "const gr = window.grecaptcha?.enterprise || window.grecaptcha;"
+            "if (gr && typeof gr.execute === 'function') { run(); return; }"
+            "const script = document.createElement('script');"
+            "script.src = 'https://www.google.com/recaptcha/api.js?render=' + key;"
+            "script.onerror = () => write('ERROR:Failed to load reCAPTCHA script');"
+            "script.onload = () => { try { run(); } catch (error) { write('ERROR:' + String(error)); } };"
+            "document.head.appendChild(script);"
+            "} catch (error) { write('ERROR:' + String(error)); }"
+            "})()"
+        )
+        await page.evaluate(expression)
+
+        for _ in range(40):
+            await asyncio.sleep(0.25)
+            token = await page.evaluate(
+                "([attrName]) => document.documentElement.getAttribute(attrName)",
+                [_RECAPTCHA_V3_TOKEN_ATTR],
+            )
+            if isinstance(token, str) and token.startswith("ERROR:"):
+                raise RuntimeError(token[6:])
+            if isinstance(token, str) and token:
+                return token
+
+        raise RuntimeError("Timed out waiting for reCAPTCHA v3 token from main-world bridge")
 
     async def _ensure_browser(self) -> None:
         if self._browser is not None:
