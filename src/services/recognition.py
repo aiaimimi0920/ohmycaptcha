@@ -14,6 +14,7 @@ import logging
 import re
 from typing import Any
 
+import httpx
 from openai import AsyncOpenAI
 from PIL import Image
 
@@ -97,10 +98,20 @@ class CaptchaRecognizer:
         self._local_client = AsyncOpenAI(
             base_url=config.local_base_url,
             api_key=config.local_api_key,
+            max_retries=0,
+            http_client=httpx.AsyncClient(
+                timeout=httpx.Timeout(float(config.captcha_timeout)),
+                trust_env=False,
+            ),
         )
         self._cloud_client = AsyncOpenAI(
             base_url=config.cloud_base_url,
             api_key=config.cloud_api_key,
+            max_retries=0,
+            http_client=httpx.AsyncClient(
+                timeout=httpx.Timeout(float(config.captcha_timeout)),
+                trust_env=False,
+            ),
         )
 
     async def recognize(self, image_bytes: bytes) -> dict[str, Any]:
@@ -126,15 +137,16 @@ class CaptchaRecognizer:
                     return await self._call_model(client, model, data_url)
                 except Exception as exc:
                     last_error = exc
+                    error_details = self._describe_exception(exc)
                     log.warning(
                         "Recognition attempt %d via %s failed: %s",
                         attempt + 1,
                         client_name,
-                        exc,
+                        error_details,
                     )
 
         raise RuntimeError(
-            f"Recognition failed after {self._config.captcha_retries} attempts: {last_error}"
+            f"Recognition failed after {self._config.captcha_retries} attempts: {self._describe_exception(last_error)}"
         )
 
     @staticmethod
@@ -186,6 +198,35 @@ class CaptchaRecognizer:
         if not isinstance(data, dict):
             raise ValueError(f"Expected JSON object, got {type(data).__name__}")
         return data
+
+    @staticmethod
+    def _describe_exception(error: Exception | None) -> str:
+        if error is None:
+            return "unknown error"
+
+        parts = [error.__class__.__name__]
+        message = str(error).strip()
+        if message and message != parts[0]:
+            parts.append(message)
+
+        status_code = getattr(error, "status_code", None)
+        if status_code:
+            parts.append(f"status={status_code}")
+
+        response = getattr(error, "response", None)
+        if response is not None:
+            response_body: str | None = None
+            try:
+                response_body = json.dumps(response.json(), ensure_ascii=False)
+            except Exception:
+                response_body = getattr(response, "text", None)
+            if response_body:
+                compact = " ".join(str(response_body).split())
+                if len(compact) > 240:
+                    compact = compact[:237] + "..."
+                parts.append(f"response={compact}")
+
+        return " | ".join(parts)
 
     async def solve(self, params: dict[str, Any]) -> dict[str, Any]:
         """Solver interface for TaskManager integration."""
