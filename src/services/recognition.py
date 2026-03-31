@@ -94,9 +94,13 @@ class CaptchaRecognizer:
 
     def __init__(self, config: Config) -> None:
         self._config = config
-        self._client = AsyncOpenAI(
+        self._local_client = AsyncOpenAI(
             base_url=config.local_base_url,
             api_key=config.local_api_key,
+        )
+        self._cloud_client = AsyncOpenAI(
+            base_url=config.cloud_base_url,
+            api_key=config.cloud_api_key,
         )
 
     async def recognize(self, image_bytes: bytes) -> dict[str, Any]:
@@ -104,13 +108,30 @@ class CaptchaRecognizer:
         b64 = base64.b64encode(processed).decode()
         data_url = f"data:image/png;base64,{b64}"
 
+        local_first = not (
+            self._config.local_base_url.rstrip("/") == "http://localhost:30000/v1"
+            and self._config.local_api_key == "EMPTY"
+        )
+
         last_error: Exception | None = None
-        for attempt in range(self._config.captcha_retries):
-            try:
-                return await self._call_model(data_url)
-            except Exception as exc:
-                last_error = exc
-                log.warning("Recognition attempt %d failed: %s", attempt + 1, exc)
+        client_plan = (
+            [("local", self._local_client, self._config.captcha_multimodal_model), ("cloud", self._cloud_client, self._config.cloud_model)]
+            if local_first
+            else [("cloud", self._cloud_client, self._config.cloud_model), ("local", self._local_client, self._config.captcha_multimodal_model)]
+        )
+
+        for client_name, client, model in client_plan:
+            for attempt in range(self._config.captcha_retries):
+                try:
+                    return await self._call_model(client, model, data_url)
+                except Exception as exc:
+                    last_error = exc
+                    log.warning(
+                        "Recognition attempt %d via %s failed: %s",
+                        attempt + 1,
+                        client_name,
+                        exc,
+                    )
 
         raise RuntimeError(
             f"Recognition failed after {self._config.captcha_retries} attempts: {last_error}"
@@ -125,9 +146,14 @@ class CaptchaRecognizer:
         img.save(buf, format="PNG")
         return buf.getvalue()
 
-    async def _call_model(self, data_url: str) -> dict[str, Any]:
-        response = await self._client.chat.completions.create(
-            model=self._config.captcha_multimodal_model,
+    async def _call_model(
+        self,
+        client: AsyncOpenAI,
+        model: str,
+        data_url: str,
+    ) -> dict[str, Any]:
+        response = await client.chat.completions.create(
+            model=model,
             temperature=0.05,
             max_tokens=1024,
             messages=[

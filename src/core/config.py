@@ -85,15 +85,24 @@ def load_config() -> Config:
         # Local model
         local_base_url=os.environ.get(
             "LOCAL_BASE_URL",
-            os.environ.get("CAPTCHA_BASE_URL", "http://localhost:30000/v1"),
+            os.environ.get(
+                "CLOUD_BASE_URL",
+                os.environ.get("CAPTCHA_BASE_URL", "http://localhost:30000/v1"),
+            ),
         ),
         local_api_key=os.environ.get(
             "LOCAL_API_KEY",
-            os.environ.get("CAPTCHA_API_KEY", "EMPTY"),
+            os.environ.get(
+                "CLOUD_API_KEY",
+                os.environ.get("CAPTCHA_API_KEY", "EMPTY"),
+            ),
         ),
         local_model=os.environ.get(
             "LOCAL_MODEL",
-            os.environ.get("CAPTCHA_MULTIMODAL_MODEL", "Qwen/Qwen3.5-2B"),
+            os.environ.get(
+                "CLOUD_MODEL",
+                os.environ.get("CAPTCHA_MULTIMODAL_MODEL", "Qwen/Qwen3.5-2B"),
+            ),
         ),
         captcha_retries=int(os.environ.get("CAPTCHA_RETRIES", "3")),
         captcha_timeout=int(os.environ.get("CAPTCHA_TIMEOUT", "30")),
