@@ -92,10 +92,15 @@ class RecaptchaV2Solver:
 
     async def solve(self, params: dict[str, Any]) -> dict[str, Any]:
         if self._browser_service.enabled:
-            result = await self._browser_service.solve("captcha.recaptcha_v2", params)
-            if "gRecaptchaResponse" not in result:
-                raise RuntimeError(f"BrowserService returned invalid reCAPTCHA v2 result: {result}")
-            return result
+            website_url = params["websiteURL"]
+            website_key = params["websiteKey"]
+            is_invisible = params.get("isInvisible", False)
+
+            async with self._browser_service.open_attached_page(website_url) as attached:
+                token = await self._solve_on_page(
+                    attached.page, website_url, website_key, is_invisible
+                )
+                return {"gRecaptchaResponse": token}
 
         await self._ensure_browser()
         website_url = params["websiteURL"]
@@ -140,34 +145,42 @@ class RecaptchaV2Solver:
         await page.add_init_script(_STEALTH_JS)
 
         try:
-            timeout_ms = self._config.browser_timeout * 1000
-            await page.goto(website_url, wait_until="networkidle", timeout=timeout_ms)
-            await page.mouse.move(400, 300)
-            await asyncio.sleep(0.5)
-
-            if is_invisible:
-                token = await page.evaluate(
-                    """
-                    ([key]) => new Promise((resolve, reject) => {
-                        const gr = window.grecaptcha?.enterprise || window.grecaptcha;
-                        if (!gr) { reject(new Error('grecaptcha not found')); return; }
-                        gr.ready(() => {
-                            gr.execute(key).then(resolve).catch(reject);
-                        });
-                    })
-                    """,
-                    [website_key],
-                )
-            else:
-                token = await self._solve_checkbox(page)
-
-            if not isinstance(token, str) or len(token) < 20:
-                raise RuntimeError(f"Invalid reCAPTCHA v2 token: {token!r}")
-
-            log.info("Got reCAPTCHA v2 token (len=%d)", len(token))
-            return token
+            return await self._solve_on_page(page, website_url, website_key, is_invisible)
         finally:
             await context.close()
+
+    async def _solve_on_page(
+        self, page: Any, website_url: str, website_key: str, is_invisible: bool
+    ) -> str:
+        timeout_ms = self._config.browser_timeout * 1000
+        if page.url != website_url:
+            await page.goto(website_url, wait_until="networkidle", timeout=timeout_ms)
+        else:
+            await page.wait_for_load_state("networkidle", timeout=timeout_ms)
+        await page.mouse.move(400, 300)
+        await asyncio.sleep(0.5)
+
+        if is_invisible:
+            token = await page.evaluate(
+                """
+                ([key]) => new Promise((resolve, reject) => {
+                    const gr = window.grecaptcha?.enterprise || window.grecaptcha;
+                    if (!gr) { reject(new Error('grecaptcha not found')); return; }
+                    gr.ready(() => {
+                        gr.execute(key).then(resolve).catch(reject);
+                    });
+                })
+                """,
+                [website_key],
+            )
+        else:
+            token = await self._solve_checkbox(page)
+
+        if not isinstance(token, str) or len(token) < 20:
+            raise RuntimeError(f"Invalid reCAPTCHA v2 token: {token!r}")
+
+        log.info("Got reCAPTCHA v2 token (len=%d)", len(token))
+        return token
 
     async def _solve_checkbox(self, page: Any) -> str | None:
         """Click the reCAPTCHA checkbox. If a visual challenge appears, try audio path."""

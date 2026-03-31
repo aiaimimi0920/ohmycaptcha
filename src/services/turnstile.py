@@ -71,10 +71,12 @@ class TurnstileSolver:
 
     async def solve(self, params: dict[str, Any]) -> dict[str, Any]:
         if self._browser_service.enabled:
-            result = await self._browser_service.solve("captcha.turnstile", params)
-            if "token" not in result:
-                raise RuntimeError(f"BrowserService returned invalid Turnstile result: {result}")
-            return result
+            website_url = params["websiteURL"]
+            website_key = params["websiteKey"]
+
+            async with self._browser_service.open_attached_page(website_url) as attached:
+                token = await self._solve_on_page(attached.page, website_url, website_key)
+                return {"token": token}
 
         await self._ensure_browser()
         website_url = params["websiteURL"]
@@ -116,35 +118,39 @@ class TurnstileSolver:
         await page.add_init_script(_STEALTH_JS)
 
         try:
-            timeout_ms = self._config.browser_timeout * 1000
-            await page.goto(website_url, wait_until="networkidle", timeout=timeout_ms)
-
-            await page.mouse.move(400, 300)
-            await asyncio.sleep(1)
-
-            # Try clicking the Turnstile checkbox
-            try:
-                iframe_element = page.frame_locator(
-                    'iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"]'
-                )
-                checkbox = iframe_element.locator(
-                    'input[type="checkbox"], .ctp-checkbox-label, label'
-                )
-                await checkbox.click(timeout=8_000)
-            except Exception:
-                log.info("No Turnstile checkbox found, waiting for auto-solve")
-
-            # Wait for the token to appear
-            for _ in range(15):
-                await asyncio.sleep(2)
-                token = await page.evaluate(_EXTRACT_TURNSTILE_TOKEN_JS)
-                if token:
-                    log.info("Got Turnstile token (len=%d)", len(token))
-                    return token
-
-            raise RuntimeError("Turnstile token not obtained within timeout")
+            return await self._solve_on_page(page, website_url, website_key)
         finally:
             await context.close()
+
+    async def _solve_on_page(self, page: Any, website_url: str, website_key: str) -> str:
+        timeout_ms = self._config.browser_timeout * 1000
+        if page.url != website_url:
+            await page.goto(website_url, wait_until="networkidle", timeout=timeout_ms)
+        else:
+            await page.wait_for_load_state("networkidle", timeout=timeout_ms)
+
+        await page.mouse.move(400, 300)
+        await asyncio.sleep(1)
+
+        try:
+            iframe_element = page.frame_locator(
+                'iframe[src*="challenges.cloudflare.com"], iframe[src*="turnstile"], iframe[title*="turnstile"], iframe[title*="Turnstile"]'
+            )
+            checkbox = iframe_element.locator(
+                'input[type="checkbox"], .ctp-checkbox-label, label'
+            )
+            await checkbox.click(timeout=8_000)
+        except Exception:
+            log.info("No Turnstile checkbox found, waiting for auto-solve")
+
+        for _ in range(15):
+            await asyncio.sleep(2)
+            token = await page.evaluate(_EXTRACT_TURNSTILE_TOKEN_JS)
+            if token:
+                log.info("Got Turnstile token (len=%d)", len(token))
+                return token
+
+        raise RuntimeError("Turnstile token not obtained within timeout")
 
     async def _ensure_browser(self) -> None:
         if self._browser is not None:

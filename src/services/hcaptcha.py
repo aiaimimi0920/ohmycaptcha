@@ -69,10 +69,12 @@ class HCaptchaSolver:
 
     async def solve(self, params: dict[str, Any]) -> dict[str, Any]:
         if self._browser_service.enabled:
-            result = await self._browser_service.solve("captcha.hcaptcha", params)
-            if "gRecaptchaResponse" not in result:
-                raise RuntimeError(f"BrowserService returned invalid hCaptcha result: {result}")
-            return result
+            website_url = params["websiteURL"]
+            website_key = params["websiteKey"]
+
+            async with self._browser_service.open_attached_page(website_url) as attached:
+                token = await self._solve_on_page(attached.page, website_url, website_key)
+                return {"gRecaptchaResponse": token}
 
         await self._ensure_browser()
         website_url = params["websiteURL"]
@@ -114,35 +116,39 @@ class HCaptchaSolver:
         await page.add_init_script(_STEALTH_JS)
 
         try:
-            timeout_ms = self._config.browser_timeout * 1000
-            await page.goto(website_url, wait_until="networkidle", timeout=timeout_ms)
-
-            await page.mouse.move(400, 300)
-            await asyncio.sleep(1)
-
-            # Click only the checkbox iframe — match by specific title to avoid the challenge iframe
-            iframe_element = page.frame_locator(
-                'iframe[title="Widget containing checkbox for hCaptcha security challenge"]'
-            )
-            checkbox = iframe_element.locator("#checkbox")
-            await checkbox.click(timeout=10_000)
-
-            # Wait for token — may require challenge completion; poll up to 30s
-            for _ in range(6):
-                await asyncio.sleep(5)
-                token = await page.evaluate(_EXTRACT_HCAPTCHA_TOKEN_JS)
-                if isinstance(token, str) and len(token) > 20:
-                    break
-            else:
-                token = None
-
-            if not isinstance(token, str) or len(token) < 20:
-                raise RuntimeError(f"Invalid hCaptcha token: {token!r}")
-
-            log.info("Got hCaptcha token (len=%d)", len(token))
-            return token
+            return await self._solve_on_page(page, website_url, website_key)
         finally:
             await context.close()
+
+    async def _solve_on_page(self, page: Any, website_url: str, website_key: str) -> str:
+        timeout_ms = self._config.browser_timeout * 1000
+        if page.url != website_url:
+            await page.goto(website_url, wait_until="networkidle", timeout=timeout_ms)
+        else:
+            await page.wait_for_load_state("networkidle", timeout=timeout_ms)
+
+        await page.mouse.move(400, 300)
+        await asyncio.sleep(1)
+
+        iframe_element = page.frame_locator(
+            'iframe[title="Widget containing checkbox for hCaptcha security challenge"]'
+        )
+        checkbox = iframe_element.locator("#checkbox")
+        await checkbox.click(timeout=10_000)
+
+        for _ in range(6):
+            await asyncio.sleep(5)
+            token = await page.evaluate(_EXTRACT_HCAPTCHA_TOKEN_JS)
+            if isinstance(token, str) and len(token) > 20:
+                break
+        else:
+            token = None
+
+        if not isinstance(token, str) or len(token) < 20:
+            raise RuntimeError(f"Invalid hCaptcha token: {token!r}")
+
+        log.info("Got hCaptcha token (len=%d)", len(token))
+        return token
 
     async def _ensure_browser(self) -> None:
         if self._browser is not None:
