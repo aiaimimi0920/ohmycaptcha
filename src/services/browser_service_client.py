@@ -126,6 +126,11 @@ class BrowserServiceClient:
             if state in {"succeeded", "ready", "completed"}:
                 result = data.get("result")
                 if isinstance(result, dict):
+                    provider_response = result.get("provider_response")
+                    if isinstance(provider_response, dict) and str(result.get("action", "")).startswith("captcha."):
+                        merged = dict(provider_response)
+                        merged.setdefault("_easybrowser", result)
+                        return merged
                     return result
                 return {"result": result}
 
